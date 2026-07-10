@@ -1,6 +1,42 @@
 [package]
+edition = "2024"
 name = "turbo_crc"
 version = "0.0.0"
-edition = "2024"
+readme = "../README.md"
+keywords = ["crc", "simd"]
+categories = ["algorithms"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/frozen-lab/turbo_crc"
+description = "Hardware accelerated implementation of CRC32C for computing 32-bit cyclic redundency check (CRC)"
 
-[dependencies]
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+additional-targets = ["i686-apple-darwin"]
+targets = [
+    "aarch64-apple-darwin",
+    "i686-pc-windows-msvc",
+    "x86_64-pc-windows-msvc",
+    "aarch64-unknown-linux-gnu",
+]
+
+[profile.release]
+lto = "fat"
+opt-level = 3
+codegen-units = 1
+incremental = false
+
+[profile.bench]
+debug = true
+strip = false
+inherits = "release"
+debug-assertions = false
+
+[profile.profile]
+debug = true
+lto = "off"
+strip = "none"
+opt-level = 2
+codegen-units = 1
+inherits = "release"
+overflow-checks = false
+debug-assertions = false
