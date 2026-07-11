@@ -100,3 +100,53 @@ impl TurboCrc {
 unsafe fn load(ptr: *const u8) -> u32 {
     std::ptr::read_unaligned(ptr.cast())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanity_check() {
+        assert_eq!(std::mem::size_of::<TurboCrc>(), 0);
+    }
+
+    fn make_buffer(len: usize) -> Vec<u8> {
+        let mut x = 0x1234_5678u32;
+        let mut out = vec![0u8; len];
+
+        for byte in &mut out {
+            x = x.wrapping_mul(1664525).wrapping_add(1013904223);
+            *byte = (x >> 0x18) as u8;
+        }
+
+        out
+    }
+
+    #[test]
+    fn ok_avalanche_effect() {
+        let a = make_buffer(0x400);
+        let mut b = a.clone();
+
+        b[0x200] ^= 0x80;
+        assert_ne!(TurboCrc::crc(&a), TurboCrc::crc(&b));
+    }
+
+    #[test]
+    fn ok_trailing_zero_changes_crc() {
+        let a = make_buffer(0x100);
+        let mut b = a.clone();
+
+        b[0xFF] = 0;
+        assert_ne!(TurboCrc::crc(&a), TurboCrc::crc(&b));
+    }
+
+    #[test]
+    fn ok_deterministic() {
+        let buf = make_buffer(0x1000);
+        let expected = TurboCrc::crc(&buf);
+
+        for _ in 0..0x40 {
+            assert_eq!(TurboCrc::crc(&buf), expected);
+        }
+    }
+}
