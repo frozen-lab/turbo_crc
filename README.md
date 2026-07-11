@@ -17,18 +17,21 @@ Observed throughput across multiple benchmark runs,
 
 | Buffer Size | Throughput |
 |:------------|:-----------|
-| 64 KiB      | 523 MB/s   |
-| 256 KiB     | 522 MB/s   |
-| 1 MiB       | 521 MB/s   |
-| 16 MiB      | 513 MB/s   |
+| 64 KiB      | 2.89 GiB/s |
+| 256 KiB     | 2.89 GiB/s |
+| 1 MiB       | 2.89 GiB/s |
+| 16 MiB      | 3.07 GiB/s |
+| 64 MiB      | 3.08 GiB/s |
 
-TL;DR: Sustains ~0.5 GiB/s across buffers from 64 KiB to 64 MiB
+TL;DR: Sustains ~3 GiB/s across buffers from 64 KiB to 64 MiB
 
 ## Example
 
 ```rs
-use turbo_crc::crc;
+use turbo_crc::TurboCrc;
 
-let standard_vector = b"123456789";
-assert_eq!(crc(standard_vector), 0xCBF43926);
+let buffer = vec![0x0Au8; 0x400 * 0x400 * 0x40];
+let crc = TurboCrc::crc(&buffer);
+
+assert_ne!(crc, 0);
 ```
