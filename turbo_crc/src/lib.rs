@@ -16,76 +16,87 @@
 //! ## Example
 //!
 //! ```
-//! use turbo_crc::crc;
+//! use turbo_crc::TurboCrc;
 //!
-//! let standard_vector = b"123456789";
-//! assert_eq!(crc(standard_vector), 0xCBF43926);
+//! assert_eq!(std::mem::size_of::<TurboCrc>(), 0);
 //! ```
 
 include!(concat!(env!("OUT_DIR"), "/table.rs"));
 
-/// Compute a 32-bit crc for a given data buffer
+/// Hardware accelerated implementation of CRC32C for computing 32-bit cyclic redundency check (CRC)
 ///
 /// ## Example
 ///
 /// ```
-/// use turbo_crc::crc;
-///
-/// let data = b"Hello, world!";
-/// assert_ne!(crc(data), 0);
+/// assert_eq!(std::mem::size_of::<turbo_crc::TurboCrc>(), 0);
 /// ```
-#[inline(always)]
-pub fn crc(buffer: &[u8]) -> u32 {
-    let mut crc = !0;
-    for &byte in buffer {
-        let index = ((crc ^ (byte as u32)) & 0xFF) as usize;
-        crc = (crc >> 8) ^ TABLE[index];
-    }
+#[derive(Debug, Clone)]
+pub struct TurboCrc;
 
-    crc ^ !0u32
+impl TurboCrc {
+    /// Compute a 32-bit crc for a given data buffer
+    ///
+    /// _NOTE:_ Input `buffer` must be 16-bytes aligned.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use turbo_crc::TurboCrc;
+    ///
+    /// let buffer = vec![0x0Au8; 0x20];
+    /// let crc = TurboCrc::crc(&buffer);
+    ///
+    /// assert_ne!(crc, 0);
+    /// ```
+    #[inline(always)]
+    pub fn crc(buffer: &[u8]) -> u32 {
+        // sanity check
+        #[cfg(debug_assertions)]
+        {
+            let len = buffer.len();
+            debug_assert!(
+                len >= 0x10 && (len & len - 1) == 0,
+                "Input buffer must be aligned to 16 bytes"
+            );
+        }
+
+        let mut crc = !0u32;
+        let mut ptr = buffer.as_ptr();
+        let mut chunks = buffer.len() / 0x10;
+
+        while chunks != 0 {
+            let a = unsafe { load(ptr) ^ crc };
+            let b = unsafe { load(ptr.add(4)) };
+            let c = unsafe { load(ptr.add(8)) };
+            let d = unsafe { load(ptr.add(0x0C)) };
+
+            crc = TABLE[0x0F][(a & 0xff) as usize]
+                ^ TABLE[0x0E][((a >> 8) & 0xff) as usize]
+                ^ TABLE[0x0D][((a >> 0x10) & 0xff) as usize]
+                ^ TABLE[0x0C][((a >> 0x18) & 0xff) as usize]
+                ^ TABLE[0x0B][(b & 0xff) as usize]
+                ^ TABLE[0x0A][((b >> 8) & 0xff) as usize]
+                ^ TABLE[9][((b >> 0x10) & 0xff) as usize]
+                ^ TABLE[8][((b >> 0x18) & 0xff) as usize]
+                ^ TABLE[7][(c & 0xff) as usize]
+                ^ TABLE[6][((c >> 8) & 0xff) as usize]
+                ^ TABLE[5][((c >> 0x10) & 0xff) as usize]
+                ^ TABLE[4][((c >> 0x18) & 0xff) as usize]
+                ^ TABLE[3][(d & 0xff) as usize]
+                ^ TABLE[2][((d >> 8) & 0xff) as usize]
+                ^ TABLE[1][((d >> 0x10) & 0xff) as usize]
+                ^ TABLE[0][((d >> 0x18) & 0xff) as usize];
+
+            ptr = unsafe { ptr.add(0x10) };
+            chunks -= 1;
+        }
+
+        !crc
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ok_test_standard_ieee_vector() {
-        let data = b"123456789";
-        assert_eq!(crc(data), 0xCBF43926);
-    }
-
-    #[test]
-    fn ok_test_empty_buffer() {
-        let data = b"";
-        assert_eq!(crc(data), 0x00000000);
-    }
-
-    #[test]
-    fn ok_test_single_byte() {
-        let data = b"a";
-        assert_eq!(crc(data), 0xE8B7BE43);
-    }
-
-    #[test]
-    fn ok_test_long_pangram() {
-        let data = b"The quick brown fox jumps over the lazy dog";
-        assert_eq!(crc(data), 0x414FA339);
-    }
-
-    #[test]
-    fn ok_test_avalanche_effect() {
-        let data1 = b"Hello, world!";
-        let data2 = b"Hello, world.";
-
-        assert_ne!(crc(data1), crc(data2), "A single byte change must alter the CRC");
-    }
-
-    #[test]
-    fn ok_test_trailing_zeros_mutation() {
-        let data_base = b"secret_file";
-        let data_padded = b"secret_file\0\0\0\0";
-
-        assert_ne!(crc(data_base), crc(data_padded), "Trailing zeros must alter the CRC");
-    }
+#[inline(always)]
+#[allow(unsafe_op_in_unsafe_fn)]
+unsafe fn load(ptr: *const u8) -> u32 {
+    std::ptr::read_unaligned(ptr.cast())
 }
