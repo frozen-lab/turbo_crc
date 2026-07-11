@@ -13,7 +13,7 @@ fn main() {
     }
 
     let mut src = String::new();
-    src.push_str("pub const TABLE: [u32; 256] = [\n");
+    src.push_str("const TABLE: [u32; 256] = [\n");
 
     for value in table {
         src.push_str(&format!("    0x{:08X},\n", value));
