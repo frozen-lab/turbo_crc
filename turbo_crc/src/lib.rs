@@ -17,147 +17,41 @@
 //! ## Example
 //!
 //! ```
-//! use turbo_crc::TurboCrc;
+//! extern crate turbo_crc;
 //!
-//! let buffer = vec![0x0Au8; 0x400 * 0x400 * 0x40];
-//! let crc = TurboCrc::crc(&buffer);
-//!
-//! assert_ne!(crc, 0);
-//! assert_eq!(std::mem::size_of::<TurboCrc>(), 0);
+//! let standard_vector = b"12345678";
+//! assert_eq!(turbo_crc::crc32c(standard_vector), 0x6087809A);
 //! ```
 
-include!(concat!(env!("OUT_DIR"), "/table.rs"));
-
-/// Hardware accelerated implementation of CRC32C for computing 32-bit cyclic redundancy check (CRC)
+/// Compute a 32-bit crc for a given data buffer
 ///
 /// ## Example
 ///
 /// ```
-/// use turbo_crc::TurboCrc;
+/// extern crate turbo_crc;
 ///
-/// let buffer = vec![0x0Au8; 0x400 * 0x400 * 0x40];
-/// let crc = TurboCrc::crc(&buffer);
-///
-/// assert_ne!(crc, 0);
-/// assert_eq!(std::mem::size_of::<TurboCrc>(), 0);
+/// let standard_vector = b"12345678";
+/// assert_eq!(turbo_crc::crc32c(standard_vector), 0x6087809A);
 /// ```
-#[derive(Debug, Clone)]
-pub struct TurboCrc;
-
-impl TurboCrc {
-    /// Compute a 32-bit crc for a given data buffer
-    ///
-    /// _NOTE:_ Input `buffer` must be 16-bytes aligned.
-    ///
-    /// ## Example
-    ///
-    /// ```
-    /// use turbo_crc::TurboCrc;
-    ///
-    /// let buffer = vec![0x0Au8; 0x20];
-    /// let crc = TurboCrc::crc(&buffer);
-    ///
-    /// assert_ne!(crc, 0);
-    /// ```
-    #[inline(always)]
-    pub fn crc(buffer: &[u8]) -> u32 {
-        // sanity check
-        #[cfg(debug_assertions)]
-        {
-            let len = buffer.len();
-            debug_assert!(
-                len >= 0x10 && (len & len - 1) == 0,
-                "Input buffer must be aligned to 16 bytes"
-            );
-        }
-
-        let mut crc = !0u32;
-        let mut ptr = buffer.as_ptr();
-        let mut chunks = buffer.len() / 0x10;
-
-        while chunks != 0 {
-            let a = unsafe { load(ptr) ^ crc };
-            let b = unsafe { load(ptr.add(4)) };
-            let c = unsafe { load(ptr.add(8)) };
-            let d = unsafe { load(ptr.add(0x0C)) };
-
-            crc = TABLE[0x0F][(a & 0xff) as usize]
-                ^ TABLE[0x0E][((a >> 8) & 0xff) as usize]
-                ^ TABLE[0x0D][((a >> 0x10) & 0xff) as usize]
-                ^ TABLE[0x0C][((a >> 0x18) & 0xff) as usize]
-                ^ TABLE[0x0B][(b & 0xff) as usize]
-                ^ TABLE[0x0A][((b >> 8) & 0xff) as usize]
-                ^ TABLE[9][((b >> 0x10) & 0xff) as usize]
-                ^ TABLE[8][((b >> 0x18) & 0xff) as usize]
-                ^ TABLE[7][(c & 0xff) as usize]
-                ^ TABLE[6][((c >> 8) & 0xff) as usize]
-                ^ TABLE[5][((c >> 0x10) & 0xff) as usize]
-                ^ TABLE[4][((c >> 0x18) & 0xff) as usize]
-                ^ TABLE[3][(d & 0xff) as usize]
-                ^ TABLE[2][((d >> 8) & 0xff) as usize]
-                ^ TABLE[1][((d >> 0x10) & 0xff) as usize]
-                ^ TABLE[0][((d >> 0x18) & 0xff) as usize];
-
-            ptr = unsafe { ptr.add(0x10) };
-            chunks -= 1;
-        }
-
-        !crc
-    }
-}
-
 #[inline(always)]
-#[allow(unsafe_op_in_unsafe_fn)]
-unsafe fn load(ptr: *const u8) -> u32 {
-    std::ptr::read_unaligned(ptr.cast())
-}
+#[cfg(target_arch = "x86_64")]
+pub fn crc32c(buffer: &[u8]) -> u32 {
+    // sanity check
+    debug_assert!(buffer.len() & 7 == 0, "Input buffer must be 8 bytes aligned");
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    let mut crc = (!0u32) as u64;
+    let mut len = buffer.len();
+    let mut ptr = buffer.as_ptr();
 
-    #[test]
-    fn sanity_check() {
-        assert_eq!(std::mem::size_of::<TurboCrc>(), 0);
-    }
+    while len > 0 {
+        unsafe {
+            let qword = core::ptr::read_unaligned(ptr as *const u64);
+            crc = core::arch::x86_64::_mm_crc32_u64(crc, qword);
 
-    fn make_buffer(len: usize) -> Vec<u8> {
-        let mut x = 0x1234_5678u32;
-        let mut out = vec![0u8; len];
-
-        for byte in &mut out {
-            x = x.wrapping_mul(1664525).wrapping_add(1013904223);
-            *byte = (x >> 0x18) as u8;
-        }
-
-        out
-    }
-
-    #[test]
-    fn ok_avalanche_effect() {
-        let a = make_buffer(0x400);
-        let mut b = a.clone();
-
-        b[0x200] ^= 0x80;
-        assert_ne!(TurboCrc::crc(&a), TurboCrc::crc(&b));
-    }
-
-    #[test]
-    fn ok_trailing_zero_changes_crc() {
-        let a = make_buffer(0x100);
-        let mut b = a.clone();
-
-        b[0xFF] = 0;
-        assert_ne!(TurboCrc::crc(&a), TurboCrc::crc(&b));
-    }
-
-    #[test]
-    fn ok_deterministic() {
-        let buf = make_buffer(0x1000);
-        let expected = TurboCrc::crc(&buf);
-
-        for _ in 0..0x40 {
-            assert_eq!(TurboCrc::crc(&buf), expected);
+            ptr = ptr.add(8);
+            len -= 8;
         }
     }
+
+    (!crc) as u32
 }
