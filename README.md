@@ -16,14 +16,14 @@ turbo_crc = { version = "0.0.2" }
 Observed throughput across multiple benchmark runs,
 
 | Buffer Size | Throughput |
-|:------------|:-----------|
-| 64 KiB      | 2.89 GiB/s |
-| 256 KiB     | 2.89 GiB/s |
-| 1 MiB       | 2.89 GiB/s |
-| 16 MiB      | 3.07 GiB/s |
-| 64 MiB      | 3.08 GiB/s |
+|:------------|-----------:|
+| 64 KiB      | 8.65 GiB/s |
+| 256 KiB     | 8.68 GiB/s |
+| 1 MiB       | 8.47 GiB/s |
+| 16 MiB      | 8.43 GiB/s |
+| 64 MiB      | 8.39 GiB/s |
 
-TL;DR: Sustains ~3 GiB/s across buffers from 64 KiB to 64 MiB
+TL;DR: Sustains ~8.5 GiB/s across buffers from 64 KiB to 64 MiB
 
 ## Example
 
