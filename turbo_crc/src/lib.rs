@@ -72,7 +72,7 @@ pub fn crc32c(buffer: &[u8]) -> u32 {
     // sanity check
     debug_assert!(buffer.len() & 7 == 0, "Input buffer must be 8 bytes aligned");
 
-    let mut crc = (!0u32) as u64;
+    let mut crc = !0u32;
     let mut len = buffer.len();
     let mut ptr = buffer.as_ptr();
 
@@ -86,5 +86,5 @@ pub fn crc32c(buffer: &[u8]) -> u32 {
         }
     }
 
-    (!crc) as u32
+    !crc
 }
