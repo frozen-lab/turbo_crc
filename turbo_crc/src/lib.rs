@@ -2,7 +2,7 @@
 //!
 //! ## Benchmark
 //!
-//! Observed throughput across multiple benchmark runs,
+//! Observed throughout on x86_64 using `sse4.2` ISA,
 //!
 //! | Buffer Size | Throughput |
 //! |:------------|-----------:|
@@ -12,7 +12,19 @@
 //! | 16 MiB      | 8.43 GiB/s |
 //! | 64 MiB      | 8.39 GiB/s |
 //!
-//! TL;DR: Sustains ~8.5 GiB/s across buffers from 64 KiB to 64 MiB
+//! Observed throughout on aarch64 using `crc32cd` instruction,
+//!
+//! | Buffer Size | Throughput |
+//! |:----------- | ----------:|
+//! | 64 KiB      | 11.92 GiB/s |
+//! | 256 KiB     | 11.97 GiB/s |
+//! | 1 MiB       | 11.99 GiB/s |
+//! | 16 MiB      | 11.86 GiB/s |
+//! | 64 MiB      | 11.84 GiB/s |
+//!
+//! > [!NOTE]
+//! > TL;DR: `turbo_crc` sustains ~8.5 GiB/sec on x86_64 and ~12 GiB/sec on aarch64 across buffers
+//! > from 64 KiB to 64 MiB.
 //!
 //! ## Example
 //!
