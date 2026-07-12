@@ -1,5 +1,7 @@
 # TurboCrc
 
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/frozen-lab/turbo_crc?utm_source=badge)
+
 Hardware accelerated implementation of CRC32C for computing 32-bit cyclic redundency check (CRC)
 
 ## Usage

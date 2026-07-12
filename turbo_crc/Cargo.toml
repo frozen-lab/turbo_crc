@@ -41,9 +41,9 @@ inherits = "release"
 overflow-checks = false
 debug-assertions = false
 
-[dev-dependencies.divan]
-version = "0.1.21"
-
 [[bench]]
 name = "bench"
 harness = false
+
+[dev-dependencies]
+divan = { version = "5.0.1", package = "codspeed-divan-compat" }
