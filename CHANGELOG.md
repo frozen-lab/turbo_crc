@@ -1,5 +1,9 @@
 # Changelog
 
+## `0.0.4`
+
+- (rs) Impl of crc calculations for buffer of arbitrary size/length (resolved #2)
+
 ## `0.0.3`
 
 - (rs) Impl of hardware optimized crc32c computation

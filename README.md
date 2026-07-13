@@ -8,7 +8,7 @@ Add following to your `Cargo.toml`,
 
 ```toml
 [dependencies]
-turbo_crc = { version = "0.0.3" }
+turbo_crc = { version = "0.0.4" }
 ```
 
 ## Benchmarks

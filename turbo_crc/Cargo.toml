@@ -1,7 +1,7 @@
 [package]
 edition = "2024"
 name = "turbo_crc"
-version = "0.0.3"
+version = "0.0.4"
 readme = "../README.md"
 keywords = ["crc", "simd"]
 categories = ["algorithms"]
