@@ -125,3 +125,178 @@ fn sw_b2b_crc32(mut crc: u32, buffer: &[u8]) -> u32 {
 
     crc
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod public {
+        use super::*;
+
+        #[test]
+        fn ok_empty() {
+            assert_eq!(crc32c(b""), 0x00000000);
+        }
+
+        #[test]
+        fn ok_deterministic_check() {
+            let buffer = vec![0xA5u8; 0x400 * 0x400];
+            assert_eq!(crc32c(&buffer), crc32c(&buffer));
+        }
+
+        #[test]
+        fn ok_tail_lengths() {
+            for len in 0..0x10 {
+                let buffer: Vec<u8> = (0..len).map(|x| x as u8).collect();
+                assert_eq!(crc32c(&buffer), crc32c(&buffer));
+            }
+        }
+
+        #[test]
+        fn ok_various_lengths() {
+            for len in 0..0x80 {
+                let buffer: Vec<u8> = (0..len).map(|i| (i * 0x11) as u8).collect();
+                assert_eq!(crc32c(&buffer), crc32c(&buffer));
+            }
+        }
+
+        #[cfg(target_arch = "x86_64")]
+        #[test]
+        fn x86_backend_is_compiled() {
+            let _ = hw_sse42_crc32(b"hello");
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        #[test]
+        fn arm_backend_is_compiled() {
+            let _ = hw_armv81_crc32cd(b"hello");
+        }
+
+        /// compare impl w/ official CRC-32C (source -> RFC 3720 Appendix B.4)
+        mod rfc_3720 {
+            use super::*;
+
+            #[test]
+            fn ok_standard_vector() {
+                assert_eq!(crc32c(b"123456789"), 0xE3069283);
+            }
+
+            #[test]
+            fn ok_single_byte() {
+                assert_eq!(crc32c(b"a"), 0xC1D04330);
+            }
+
+            #[test]
+            fn ok_two_bytes() {
+                assert_eq!(crc32c(b"ab"), 0xE2A22936);
+            }
+
+            #[test]
+            fn ok_three_bytes() {
+                assert_eq!(crc32c(b"abc"), 0x364B3FB7);
+            }
+
+            #[test]
+            fn ok_four_bytes() {
+                assert_eq!(crc32c(b"abcd"), 0x92C80A31);
+            }
+
+            #[test]
+            fn ok_eight_bytes() {
+                assert_eq!(crc32c(b"12345678"), 0x6087809A);
+            }
+        }
+    }
+
+    mod software {
+        use super::*;
+
+        mod byte_to_byte {
+            use super::*;
+
+            #[test]
+            fn ok_empty() {
+                assert_eq!(!sw_b2b_crc32(!0, b""), 0x00000000);
+            }
+
+            #[test]
+            fn ok_various_lengths() {
+                for len in 0..0x100 {
+                    let buffer: Vec<u8> = (0..len).map(|i| (i * 0x11) as u8).collect();
+                    assert_eq!(!sw_b2b_crc32(!0, &buffer), crc32c(&buffer),);
+                }
+            }
+
+            mod rfc_3720 {
+                use super::*;
+
+                #[test]
+                fn ok_standard_vector() {
+                    assert_eq!(!sw_b2b_crc32(!0, b"123456789"), 0xE3069283);
+                }
+            }
+        }
+    }
+
+    mod hardware {
+        use super::*;
+
+        #[cfg(target_arch = "x86_64")]
+        mod x86_64 {
+            use super::*;
+
+            #[test]
+            fn ok_empty() {
+                assert_eq!(hw_sse42_crc32(b""), 0x00000000);
+            }
+
+            #[test]
+            fn ok_all_tail_lengths() {
+                for tail in 0..8 {
+                    let len = 0x40 + tail;
+                    let buffer: Vec<u8> = (0..len).map(|i| (i * 0x0D) as u8).collect();
+
+                    assert_eq!(hw_sse42_crc32(&buffer), crc32c(&buffer),);
+                }
+            }
+
+            mod rfc_3720 {
+                use super::*;
+
+                #[test]
+                fn ok_standard_vector() {
+                    assert_eq!(hw_sse42_crc32(b"123456789"), 0xE3069283);
+                }
+            }
+        }
+
+        #[cfg(target_arch = "aarch64")]
+        mod aarch64 {
+            use super::*;
+
+            #[test]
+            fn ok_empty() {
+                assert_eq!(hw_armv81_crc32cd(b""), 0x00000000);
+            }
+
+            #[test]
+            fn ok_all_tail_lengths() {
+                for tail in 0..8 {
+                    let len = 0x40 + tail;
+                    let buffer: Vec<u8> = (0..len).map(|i| (i * 0x0D) as u8).collect();
+
+                    assert_eq!(hw_armv81_crc32cd(&buffer), crc32c(&buffer),);
+                }
+            }
+
+            mod rfc_3720 {
+                use super::*;
+
+                #[test]
+                fn ok_standard_vector() {
+                    assert_eq!(hw_armv81_crc32cd(b"123456789"), 0xE3069283);
+                }
+            }
+        }
+    }
+}
