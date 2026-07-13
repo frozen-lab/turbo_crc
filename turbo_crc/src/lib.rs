@@ -35,6 +35,8 @@
 //! assert_eq!(turbo_crc::crc32c(standard_vector), 0x6087809A);
 //! ```
 
+include!(concat!(env!("OUT_DIR"), "/table.rs"));
+
 /// Compute a hardware accelerated 32-bit crc for a given data buffer using `sse4.2` ISA
 ///
 /// ## Example
@@ -66,6 +68,16 @@ pub fn crc32c(buffer: &[u8]) -> u32 {
     }
 
     (!crc) as u32
+}
+
+#[inline(always)]
+fn byte_by_byte_crc32(mut crc: u32, buffer: &[u8]) -> u32 {
+    for &byte in buffer {
+        let index = ((crc ^ (byte as u32)) & 0xFF) as usize;
+        crc = (crc >> 8) ^ BYTE_BY_BYTE_TABLE[index];
+    }
+
+    !crc
 }
 
 /// Compute a hardware accelerated 32-bit crc for a given data buffer using ArmV8 `crc` instruction
