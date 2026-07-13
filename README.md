@@ -13,37 +13,35 @@ turbo_crc = { version = "0.0.3" }
 
 ## Benchmarks
 
-Observed throughout on x86_64 using `sse4.2` ISA,
+Measured peak throughput on x86_64 using the `sse4.2` CRC instruction,
 
 | Buffer Size | Throughput |
 |:------------|:-----------|
-| 64 KiB      | 8.65 GiB/s |
-| 256 KiB     | 8.68 GiB/s |
-| 1 MiB       | 8.47 GiB/s |
-| 16 MiB      | 8.43 GiB/s |
-| 64 MiB      | 8.39 GiB/s |
+| 16 KiB      | 9.52 GiB/s |
+| 64 KiB      | 9.58 GiB/s |
+| 256 KiB     | 9.43 GiB/s |
+| 1 MiB       | 9.37 GiB/s |
+| 16 MiB      | 8.33 GiB/s |
+| 64 MiB      | 8.16 GiB/s |
 
-Observed throughout on aarch64 using `crc32cd` instruction,
+Measured peak throughput on aarch64 using the `crc32cd` instruction,
 
 | Buffer Size | Throughput  |
-|:----------- |:------------|
+|:------------|:------------|
 | 64 KiB      | 11.92 GiB/s |
 | 256 KiB     | 11.97 GiB/s |
 | 1 MiB       | 11.99 GiB/s |
 | 16 MiB      | 11.86 GiB/s |
 | 64 MiB      | 11.84 GiB/s |
 
-> [!NOTE]
-> TL;DR: `turbo_crc` sustains ~8.5 GiB/sec on x86_64 and ~12 GiB/sec on aarch64 across buffers
-> from 64 KiB to 64 MiB.
+**TL;DR:** `turbo_crc` achieves up to `~9.5 GiB/s` on x86_64 and `~12.5 GiB/s` on aarch64 using
+hardware-accelerated CRC instructions.
 
 ## Example
 
 ```rs
-use turbo_crc::TurboCrc;
+use turbo_crc::crc32c;
 
-let buffer = vec![0x0Au8; 0x400 * 0x400 * 0x40];
-let crc = TurboCrc::crc(&buffer);
-
-assert_ne!(crc, 0);
-```
+// NOTE: Official CRC-32C (Castagnoli) check vector from RFC 3720
+assert_eq!(crc32c(b"123456789"), 0xE3069283);
+``` 

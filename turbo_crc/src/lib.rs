@@ -1,38 +1,39 @@
-//! Hardware accelerated implementation of CRC32C for computing 32-bit cyclic redundancy check (CRC)
+//! Hardware accelerated implementation for computing 32-bit cyclic redundancy checks (CRC) using
+//! the Castagnoli polynomial over the finite field GF(2)
 //!
-//! ## Benchmark
+//! ## Benchmarks
 //!
-//! Observed throughput on x86_64 using `sse4.2` ISA,
-//!
-//! | Buffer Size | Throughput |
-//! |:------------|-----------:|
-//! | 64 KiB      | 8.65 GiB/s |
-//! | 256 KiB     | 8.68 GiB/s |
-//! | 1 MiB       | 8.47 GiB/s |
-//! | 16 MiB      | 8.43 GiB/s |
-//! | 64 MiB      | 8.39 GiB/s |
-//!
-//! Observed throughput on aarch64 using `crc32cd` instruction,
+//! Measured peak throughput on x86_64 using the `sse4.2` CRC instruction,
 //!
 //! | Buffer Size | Throughput |
-//! |:----------- | ----------:|
+//! |:------------|:-----------|
+//! | 16 KiB      | 9.52 GiB/s |
+//! | 64 KiB      | 9.58 GiB/s |
+//! | 256 KiB     | 9.43 GiB/s |
+//! | 1 MiB       | 9.37 GiB/s |
+//! | 16 MiB      | 8.33 GiB/s |
+//! | 64 MiB      | 8.16 GiB/s |
+//!
+//! Measured peak throughput on aarch64 using the `crc32cd` instruction,
+//!
+//! | Buffer Size | Throughput  |
+//! |:------------|:------------|
 //! | 64 KiB      | 11.92 GiB/s |
 //! | 256 KiB     | 11.97 GiB/s |
 //! | 1 MiB       | 11.99 GiB/s |
 //! | 16 MiB      | 11.86 GiB/s |
 //! | 64 MiB      | 11.84 GiB/s |
 //!
-//! > [!NOTE]
-//! > TL;DR: `turbo_crc` sustains ~8.5 GiB/sec on x86_64 and ~12 GiB/sec on aarch64 across buffers
-//! > from 64 KiB to 64 MiB.
+//! **TL;DR:** `turbo_crc` achieves up to `~9.5 GiB/s` on x86_64 and `~12.5 GiB/s` on aarch64 using
+//! hardware-accelerated CRC instructions.
 //!
 //! ## Example
 //!
 //! ```
 //! extern crate turbo_crc;
 //!
-//! let standard_vector = b"12345678";
-//! assert_eq!(turbo_crc::crc32c(standard_vector), 0x6087809A);
+//! // NOTE: Official CRC-32C (Castagnoli) check vector from RFC 3720
+//! assert_eq!(turbo_crc::crc32c(b"123456789"), 0xE3069283);
 //! ```
 
 include!(concat!(env!("OUT_DIR"), "/table.rs"));
@@ -45,8 +46,8 @@ include!(concat!(env!("OUT_DIR"), "/table.rs"));
 /// ```
 /// extern crate turbo_crc;
 ///
-/// let standard_vector = b"12345678";
-/// assert_eq!(turbo_crc::crc32c(standard_vector), 0x6087809A);
+/// // NOTE: Official CRC-32C (Castagnoli) check vector from RFC 3720
+/// assert_eq!(turbo_crc::crc32c(b"123456789"), 0xE3069283);
 /// ```
 #[inline(always)]
 #[cfg(target_arch = "x86_64")]
@@ -62,8 +63,8 @@ pub fn crc32c(buffer: &[u8]) -> u32 {
 /// ```
 /// extern crate turbo_crc;
 ///
-/// let standard_vector = b"12345678";
-/// assert_eq!(turbo_crc::crc32c(standard_vector), 0x6087809A);
+/// // NOTE: Official CRC-32C (Castagnoli) check vector from RFC 3720
+/// assert_eq!(turbo_crc::crc32c(b"123456789"), 0xE3069283);
 /// ```
 #[inline(always)]
 #[cfg(target_arch = "aarch64")]
