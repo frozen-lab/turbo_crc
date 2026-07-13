@@ -2,7 +2,7 @@
 //!
 //! ## Benchmark
 //!
-//! Observed throughout on x86_64 using `sse4.2` ISA,
+//! Observed throughput on x86_64 using `sse4.2` ISA,
 //!
 //! | Buffer Size | Throughput |
 //! |:------------|-----------:|
@@ -12,7 +12,7 @@
 //! | 16 MiB      | 8.43 GiB/s |
 //! | 64 MiB      | 8.39 GiB/s |
 //!
-//! Observed throughout on aarch64 using `crc32cd` instruction,
+//! Observed throughput on aarch64 using `crc32cd` instruction,
 //!
 //! | Buffer Size | Throughput |
 //! |:----------- | ----------:|
@@ -37,7 +37,8 @@
 
 include!(concat!(env!("OUT_DIR"), "/table.rs"));
 
-/// Compute a hardware accelerated 32-bit crc for a given data buffer using `sse4.2` ISA
+/// Computes a 32-bit cyclic redundancy check (CRC) using Castagnoli polynomial while leveraging
+/// best available hardware instructions on x86 architectures
 ///
 /// ## Example
 ///
@@ -50,37 +51,11 @@ include!(concat!(env!("OUT_DIR"), "/table.rs"));
 #[inline(always)]
 #[cfg(target_arch = "x86_64")]
 pub fn crc32c(buffer: &[u8]) -> u32 {
-    // sanity check
-    debug_assert!(buffer.len() & 7 == 0, "Input buffer must be 8 bytes aligned");
-
-    let mut crc = (!0u32) as u64;
-    let mut len = buffer.len();
-    let mut ptr = buffer.as_ptr();
-
-    while len > 0 {
-        unsafe {
-            let qword = core::ptr::read_unaligned(ptr as *const u64);
-            crc = core::arch::x86_64::_mm_crc32_u64(crc, qword);
-
-            ptr = ptr.add(8);
-            len -= 8;
-        }
-    }
-
-    (!crc) as u32
+    hw_sse42_crc32(buffer)
 }
 
-#[inline(always)]
-fn byte_by_byte_crc32(mut crc: u32, buffer: &[u8]) -> u32 {
-    for &byte in buffer {
-        let index = ((crc ^ (byte as u32)) & 0xFF) as usize;
-        crc = (crc >> 8) ^ BYTE_BY_BYTE_TABLE[index];
-    }
-
-    !crc
-}
-
-/// Compute a hardware accelerated 32-bit crc for a given data buffer using ArmV8 `crc` instruction
+/// Computes a 32-bit cyclic redundancy check (CRC) using Castagnoli polynomial while leveraging
+/// best available hardware instructions on arm architectures
 ///
 /// ## Example
 ///
@@ -93,22 +68,60 @@ fn byte_by_byte_crc32(mut crc: u32, buffer: &[u8]) -> u32 {
 #[inline(always)]
 #[cfg(target_arch = "aarch64")]
 pub fn crc32c(buffer: &[u8]) -> u32 {
-    // sanity check
-    debug_assert!(buffer.len() & 7 == 0, "Input buffer must be 8 bytes aligned");
+    hw_armv81_crc32cd(buffer)
+}
 
-    let mut crc = !0u32;
-    let mut len = buffer.len();
-    let mut ptr = buffer.as_ptr();
+/// Computes a 32-bit cyclic redundancy check (CRC) using Castagnoli polynomial using built in
+/// hardware instruction available on `sse4.2` ISA on x86_64 architecture
+#[inline(always)]
+#[cfg(target_arch = "x86_64")]
+fn hw_sse42_crc32(buffer: &[u8]) -> u32 {
+    let mut crc = (!0u32) as u64;
 
-    while len > 0 {
+    let chunks = buffer.chunks_exact(8);
+    let remaining_bytes = chunks.remainder();
+
+    for chunk in chunks {
         unsafe {
-            let qword = core::ptr::read_unaligned(ptr as *const u64);
-            crc = core::arch::aarch64::__crc32cd(crc, qword);
-
-            ptr = ptr.add(8);
-            len -= 8;
+            let qword = core::ptr::read_unaligned(chunk.as_ptr() as *const u64);
+            crc = core::arch::x86_64::_mm_crc32_u64(crc, qword);
         }
     }
 
+    let final_crc = sw_b2b_crc32(crc as u32, remaining_bytes);
+    !final_crc
+}
+
+/// Computes a 32-bit cyclic redundancy check (CRC) using Castagnoli polynomial using the built in
+/// hardware instruction `crc32cd` available when the optional CRC extension is present (mandatory
+/// in Armv8.1-A and later)
+#[inline(always)]
+#[cfg(target_arch = "aarch64")]
+fn hw_armv81_crc32cd(buffer: &[u8]) -> u32 {
+    let mut crc = !0u32;
+
+    let chunks = buffer.chunks_exact(8);
+    let remaining_bytes = chunks.remainder();
+
+    for chunk in chunks {
+        unsafe {
+            let qword = core::ptr::read_unaligned(chunk.as_ptr() as *const u64);
+            crc = core::arch::aarch64::__crc32cd(crc, qword);
+        }
+    }
+
+    crc = sw_b2b_crc32(crc, remaining_bytes);
     !crc
+}
+
+/// Computes a 32-bit cyclic redundancy check (CRC) using Castagnoli polynomial for buffer of
+/// an arbitrary length/size
+#[inline(always)]
+fn sw_b2b_crc32(mut crc: u32, buffer: &[u8]) -> u32 {
+    for &byte in buffer {
+        let index = ((crc ^ (byte as u32)) & 0xFF) as usize;
+        crc = (crc >> 8) ^ BYTE_BY_BYTE_TABLE[index];
+    }
+
+    crc
 }
