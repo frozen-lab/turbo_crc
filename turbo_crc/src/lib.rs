@@ -36,7 +36,14 @@
 //! assert_eq!(turbo_crc::crc32c(b"123456789"), 0xE3069283);
 //! ```
 
+#![allow(unsafe_op_in_unsafe_fn)]
+
 include!(concat!(env!("OUT_DIR"), "/table.rs"));
+
+#[cfg(target_arch = "x86_64")]
+use core::arch::x86_64::*;
+
+const INITIAL_CRC: u32 = !0;
 
 /// Computes a 32-bit cyclic redundancy check (CRC) using Castagnoli polynomial while leveraging
 /// best available hardware instructions on x86 architectures
@@ -52,6 +59,10 @@ include!(concat!(env!("OUT_DIR"), "/table.rs"));
 #[inline(always)]
 #[cfg(target_arch = "x86_64")]
 pub fn crc32c(buffer: &[u8]) -> u32 {
+    if buffer.len() >= 0x40 {
+        return unsafe { hw_sse_clmul_crc32c(buffer) };
+    }
+
     hw_sse42_crc32(buffer)
 }
 
@@ -77,7 +88,7 @@ pub fn crc32c(buffer: &[u8]) -> u32 {
 #[inline(always)]
 #[cfg(target_arch = "x86_64")]
 fn hw_sse42_crc32(buffer: &[u8]) -> u32 {
-    let mut crc = (!0u32) as u64;
+    let mut crc = u64::from(INITIAL_CRC);
 
     let chunks = buffer.chunks_exact(8);
     let remaining_bytes = chunks.remainder();
@@ -87,6 +98,10 @@ fn hw_sse42_crc32(buffer: &[u8]) -> u32 {
             let qword = core::ptr::read_unaligned(chunk.as_ptr() as *const u64);
             crc = core::arch::x86_64::_mm_crc32_u64(crc, qword);
         }
+    }
+
+    if remaining_bytes.is_empty() {
+        return !(crc as u32);
     }
 
     let final_crc = sw_b2b_crc32(crc as u32, remaining_bytes);
@@ -99,7 +114,7 @@ fn hw_sse42_crc32(buffer: &[u8]) -> u32 {
 #[inline(always)]
 #[cfg(target_arch = "aarch64")]
 fn hw_armv81_crc32cd(buffer: &[u8]) -> u32 {
-    let mut crc = !0u32;
+    let mut crc = INITIAL_CRC;
 
     let chunks = buffer.chunks_exact(8);
     let remaining_bytes = chunks.remainder();
@@ -113,6 +128,121 @@ fn hw_armv81_crc32cd(buffer: &[u8]) -> u32 {
 
     crc = sw_b2b_crc32(crc, remaining_bytes);
     !crc
+}
+
+#[inline(always)]
+#[cfg(target_arch = "x86_64")]
+unsafe fn hw_sse_clmul_crc32c(buffer: &[u8]) -> u32 {
+    let k1_k2 = _mm_set_epi64x(0x1c6e41596, 0x154442bd4); // k2', k1'
+    let k3_k4 = _mm_set_epi64x(0x0ccaa009e, 0x1751997d0); // k4', k3'
+    let k5_k6 = _mm_set_epi64x(0x1db710640, 0x163cd6124); // k6', k5'
+    let pl_mu = _mm_set_epi64x(0x1f7011641, 0x1db710641); // mu', p'
+
+    let len = buffer.len();
+    let mut ptr = buffer.as_ptr();
+
+    let mut x3 = _mm_loadu_si128(ptr.add(0x00) as *const __m128i);
+    let mut x2 = _mm_loadu_si128(ptr.add(0x10) as *const __m128i);
+    let mut x1 = _mm_loadu_si128(ptr.add(0x20) as *const __m128i);
+    let mut x0 = _mm_loadu_si128(ptr.add(0x30) as *const __m128i);
+
+    let init_crc_vec = _mm_set_epi32(0, 0, 0, INITIAL_CRC as i32);
+    x3 = _mm_xor_si128(x3, init_crc_vec);
+
+    ptr = ptr.add(0x40);
+    let mut remaining = len - 0x40;
+
+    while remaining >= 0x40 {
+        let n3 = _mm_loadu_si128(ptr.add(0x00) as *const __m128i);
+        let n2 = _mm_loadu_si128(ptr.add(0x10) as *const __m128i);
+        let n1 = _mm_loadu_si128(ptr.add(0x20) as *const __m128i);
+        let n0 = _mm_loadu_si128(ptr.add(0x30) as *const __m128i);
+
+        x3 = _mm_xor_si128(
+            _mm_xor_si128(
+                _mm_clmulepi64_si128::<0x00>(x3, k1_k2),
+                _mm_clmulepi64_si128::<0x11>(x3, k1_k2),
+            ),
+            n3,
+        );
+        x2 = _mm_xor_si128(
+            _mm_xor_si128(
+                _mm_clmulepi64_si128::<0x00>(x2, k1_k2),
+                _mm_clmulepi64_si128::<0x11>(x2, k1_k2),
+            ),
+            n2,
+        );
+        x1 = _mm_xor_si128(
+            _mm_xor_si128(
+                _mm_clmulepi64_si128::<0x00>(x1, k1_k2),
+                _mm_clmulepi64_si128::<0x11>(x1, k1_k2),
+            ),
+            n1,
+        );
+        x0 = _mm_xor_si128(
+            _mm_xor_si128(
+                _mm_clmulepi64_si128::<0x00>(x0, k1_k2),
+                _mm_clmulepi64_si128::<0x11>(x0, k1_k2),
+            ),
+            n0,
+        );
+
+        ptr = ptr.add(0x40);
+        remaining -= 0x40;
+    }
+
+    let fold_x3 = _mm_xor_si128(
+        _mm_clmulepi64_si128::<0x00>(x3, k3_k4),
+        _mm_clmulepi64_si128::<0x11>(x3, k3_k4),
+    );
+    x2 = _mm_xor_si128(x2, fold_x3);
+
+    let fold_x2 = _mm_xor_si128(
+        _mm_clmulepi64_si128::<0x00>(x2, k3_k4),
+        _mm_clmulepi64_si128::<0x11>(x2, k3_k4),
+    );
+    x1 = _mm_xor_si128(x1, fold_x2);
+
+    let fold_x1 = _mm_xor_si128(
+        _mm_clmulepi64_si128::<0x00>(x1, k3_k4),
+        _mm_clmulepi64_si128::<0x11>(x1, k3_k4),
+    );
+    let mut state = _mm_xor_si128(x0, fold_x1);
+
+    while remaining >= 0x10 {
+        let next_slice = _mm_loadu_si128(ptr as *const __m128i);
+        state = _mm_xor_si128(
+            _mm_xor_si128(
+                _mm_clmulepi64_si128::<0x00>(state, k3_k4),
+                _mm_clmulepi64_si128::<0x11>(state, k3_k4),
+            ),
+            next_slice,
+        );
+        ptr = ptr.add(0x10);
+        remaining -= 0x10;
+    }
+
+    let p_k5 = _mm_clmulepi64_si128::<0x10>(state, k5_k6); // Multiply state lower 64-bits with k5
+    let state_shifted_8 = _mm_bsrli_si128::<8>(state);
+    let state_96 = _mm_xor_si128(p_k5, state_shifted_8);
+
+    let p_k6 = _mm_clmulepi64_si128::<0x00>(state_96, k5_k6); // Multiply state_96 lower 64-bits with k6
+    let state_shifted_4 = _mm_bsrli_si128::<4>(state_96);
+    let state_64 = _mm_xor_si128(p_k6, state_shifted_4);
+
+    let quotient = _mm_clmulepi64_si128::<0x10>(state_64, pl_mu); // Multiply state_64 low 64-bits by mu'
+    let quotient_poly = _mm_clmulepi64_si128::<0x00>(quotient, pl_mu); // Multiply quotient low 64-bits by p'
+
+    let remainder = _mm_xor_si128(state_64, quotient_poly);
+    let crc = _mm_extract_epi32::<1>(remainder) as u32;
+
+    if remaining == 0 {
+        return !crc;
+    }
+
+    let remaining_bytes = core::slice::from_raw_parts(ptr, remaining);
+    let final_crc = sw_b2b_crc32(crc, remaining_bytes);
+    !final_crc
 }
 
 /// Computes a 32-bit cyclic redundancy check (CRC) using Castagnoli polynomial for buffer of
